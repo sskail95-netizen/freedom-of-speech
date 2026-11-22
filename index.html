@@ -2222,9 +2222,11 @@
           newIssueFeedback.className = 'hidden rounded-xl border px-3 py-2 text-xs leading-relaxed';
 
           try {
+            // 기존 Supabase issues.id가 text 타입인 프로젝트와 호환되도록 문자열 ID를 직접 생성합니다.
+            const newIssueId = `issue-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
             const { data: insertedIssue, error } = await sb
               .from('issues')
-              .insert({ category, title, summary, author_id: state.user.id })
+              .insert({ id: newIssueId, category, title, summary, author_id: state.user.id })
               .select('id,category,title,summary,created_at,comments_count,reports,linked_trial_id')
               .single();
 
