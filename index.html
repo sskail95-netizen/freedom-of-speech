@@ -11,6 +11,12 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&family=Noto+Serif+KR:wght@600;700;900&display=swap" rel="stylesheet" />
 
+  <!-- Supabase JS SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<!-- Supabase JS SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -942,7 +948,17 @@
 
         <form id="signup-form" class="space-y-3.5">
           <div class="p-3 rounded-xl bg-gold-500/10 border border-gold-500/35 text-xs text-gold-200 leading-relaxed">
-            닉네임 가입 즉시 <strong class="text-gold-300">1,000P 무료 크레딧</strong>이 지급됩니다. (현금 충전·환전 불가)
+            이메일 가입 즉시 <strong class="text-gold-300">1,000P 무료 크레딧</strong>이 지급됩니다. (현금 충전·환전 불가)
+          </div>
+          <div>
+            <label for="signup-email" class="block text-xs font-semibold text-slate-300 mb-1">이메일</label>
+            <input type="email" id="signup-email" required placeholder="example@email.com"
+              class="w-full px-3.5 py-2.5 rounded-xl bg-navy-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-gold-500" />
+          </div>
+          <div>
+            <label for="signup-password" class="block text-xs font-semibold text-slate-300 mb-1">비밀번호 (6자 이상)</label>
+            <input type="password" id="signup-password" required minlength="6" placeholder="6자 이상 입력"
+              class="w-full px-3.5 py-2.5 rounded-xl bg-navy-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-gold-500" />
           </div>
           <div>
             <label for="signup-nickname" class="block text-xs font-semibold text-slate-300 mb-1">법정 닉네임</label>
@@ -956,8 +972,13 @@
 
         <form id="login-form" class="hidden space-y-3.5">
           <div>
-            <label for="login-nickname" class="block text-xs font-semibold text-slate-300 mb-1">등록된 닉네임</label>
-            <input type="text" id="login-nickname" required maxlength="14" placeholder="닉네임 입력 (예: 논리의정석)"
+            <label for="login-email" class="block text-xs font-semibold text-slate-300 mb-1">이메일</label>
+            <input type="email" id="login-email" required placeholder="example@email.com"
+              class="w-full px-3.5 py-2.5 rounded-xl bg-navy-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-gold-500" />
+          </div>
+          <div>
+            <label for="login-password" class="block text-xs font-semibold text-slate-300 mb-1">비밀번호</label>
+            <input type="password" id="login-password" required minlength="6" placeholder="비밀번호 입력"
               class="w-full px-3.5 py-2.5 rounded-xl bg-navy-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-gold-500" />
           </div>
           <button type="submit" class="w-full py-3 rounded-xl bg-gradient-to-r from-gold-500 to-gold-400 text-navy-950 font-extrabold text-sm">
@@ -1033,6 +1054,20 @@
   <script>
     (() => {
       'use strict';
+
+      // Supabase 클라이언트 초기화
+      const SUPABASE_URL = 'https://fwwjeviebxgaudakqkue.supabase.co';
+      const SUPABASE_KEY = 'sb_publishable_-T_XVmsB8-xhDP-5sYURTQ_XrUxsIYz';
+      const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+      const formatTimeAgo = (iso) => {
+        if (!iso) return '방금 전';
+        const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+        if (diff < 60) return '방금 전';
+        if (diff < 3600) return `${Math.floor(diff / 60)}분 전`;
+        if (diff < 86400) return `${Math.floor(diff / 3600)}시간 전`;
+        return `${Math.floor(diff / 86400)}일 전`;
+      };
 
       /* -----------------------------------------------------------------------
        * 1. 유틸리티 함수
@@ -1430,8 +1465,10 @@
         const authBox = document.getElementById('auth-controls');
         const drawerAuthBox = document.getElementById('mobile-drawer-auth');
 
-        const handleLogout = () => {
+        const handleLogout = async () => {
+          await sb.auth.signOut();
           state.user = {
+            id: null,
             isLoggedIn: false,
             nickname: '체험 배심원',
             points: 1000,
@@ -2047,12 +2084,13 @@
         });
 
         // 이슈 카드 이벤트 위임 (신고 / 재판 회부)
-        document.getElementById('issues-grid').addEventListener('click', (e) => {
+        document.getElementById('issues-grid').addEventListener('click', async (e) => {
           const reportBtn = e.target.closest('[data-report-issue]');
           if (reportBtn) {
             const issue = state.issues.find((i) => i.id === reportBtn.dataset.reportIssue);
             if (!issue) return;
             issue.reports += 1;
+            await sb.from('issues').update({ reports: issue.reports }).eq('id', issue.id);
             renderIssues();
             if (issue.reports >= 5) {
               showToast('신고가 5회 누적되어 해당 게시물이 자동 블라인드 처리되었습니다.', 'danger');
@@ -2073,8 +2111,33 @@
               document.getElementById('courtroom').scrollIntoView({ behavior: 'smooth' });
               showToast('진행 중인 실시간 재판장으로 이동했습니다.', 'info');
             } else {
+              if (!state.user.isLoggedIn) {
+                showToast('재판 회부는 로그인 후 이용 가능합니다.', 'warning');
+                openModal('auth-modal');
+                return;
+              }
               const newTrialId = `trial-${Date.now()}`;
               const caseSeq = String(42 + state.trials.length).padStart(3, '0');
+              const endsAt = new Date(Date.now() + 6 * 3600 * 1000).toISOString();
+
+              const { error: tErr } = await sb.from('trials').insert({
+                id: newTrialId,
+                case_number: `2026-민심-${caseSeq}`,
+                category: issue.category,
+                title: issue.title,
+                description: issue.summary,
+                ends_at: endsAt,
+                plaintiff_points: 500,
+                defendant_points: 500,
+                plaintiff_voters: 1,
+                defendant_voters: 1,
+              });
+              if (tErr) {
+                showToast(`재판 회부 실패: ${tErr.message}`, 'danger');
+                return;
+              }
+              await sb.from('issues').update({ linked_trial_id: newTrialId }).eq('id', issue.id);
+
               state.trials.unshift({
                 id: newTrialId,
                 caseNumber: `2026-민심-${caseSeq}`,
@@ -2100,16 +2163,36 @@
         });
 
         // 새 이슈 제보 모달
-        document.getElementById('open-new-issue-btn').addEventListener('click', () => openModal('new-issue-modal'));
-        document.getElementById('new-issue-form').addEventListener('submit', (e) => {
+        document.getElementById('open-new-issue-btn').addEventListener('click', () => {
+          if (!state.user.isLoggedIn) {
+            showToast('이슈 제보는 로그인 후 이용 가능합니다.', 'warning');
+            openModal('auth-modal');
+            return;
+          }
+          openModal('new-issue-modal');
+        });
+        document.getElementById('new-issue-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const category = document.getElementById('new-issue-category').value;
           const title = document.getElementById('new-issue-title').value.trim();
           const summary = document.getElementById('new-issue-summary').value.trim();
           if (!title || !summary) return;
 
+          const newId = `issue-${Date.now()}`;
+          const { error } = await sb.from('issues').insert({
+            id: newId,
+            category,
+            title,
+            summary,
+            author_id: state.user.id,
+          });
+          if (error) {
+            showToast(`이슈 등록 실패: ${error.message}`, 'danger');
+            return;
+          }
+
           state.issues.unshift({
-            id: `issue-${Date.now()}`,
+            id: newId,
             category,
             title,
             summary,
@@ -2122,7 +2205,7 @@
           closeModal('new-issue-modal');
           state.selectedCategory = '전체';
           renderIssues();
-          showToast('새로운 실시간 이슈가 등록되었습니다!', 'success');
+          showToast('새로운 실시간 이슈가 DB에 등록되었습니다!', 'success');
         });
 
         // 재판 안건 선택
@@ -2181,9 +2264,14 @@
           document.getElementById('argument-char-count').textContent = `${argTextarea.value.length} / 160자`;
         });
 
-        // 베팅 & 한 줄 변론 제출
-        document.getElementById('bet-argument-form').addEventListener('submit', (e) => {
+        // 베팅 & 한 줄 변론 제출 (DB 포인트 연동)
+        document.getElementById('bet-argument-form').addEventListener('submit', async (e) => {
           e.preventDefault();
+          if (!state.user.isLoggedIn) {
+            showToast('베팅과 변론 작성은 로그인 후 이용 가능합니다.', 'warning');
+            openModal('auth-modal');
+            return;
+          }
           const trial = getActiveTrial();
           if (!trial) return;
 
@@ -2199,18 +2287,64 @@
             return;
           }
 
-          state.user.points -= bet;
-          state.user.totalBets += 1;
-          if (state.selectedBetSide === 'plaintiff') {
-            trial.plaintiffPoints += bet;
-            trial.plaintiffVoters += 1;
-          } else {
-            trial.defendantPoints += bet;
-            trial.defendantVoters += 1;
+          const newPoints = state.user.points - bet;
+          const newTotalBets = state.user.totalBets + 1;
+          const isP = state.selectedBetSide === 'plaintiff';
+          const newPPoints = isP ? trial.plaintiffPoints + bet : trial.plaintiffPoints;
+          const newPVoters = isP ? trial.plaintiffVoters + 1 : trial.plaintiffVoters;
+          const newDPoints = !isP ? trial.defendantPoints + bet : trial.defendantPoints;
+          const newDVoters = !isP ? trial.defendantVoters + 1 : trial.defendantVoters;
+          const newArgId = `arg-${Date.now()}`;
+
+          // 1) 회원 포인트 차감 저장
+          const { error: pErr } = await sb.from('profiles')
+            .update({ points: newPoints, total_bets: newTotalBets })
+            .eq('id', state.user.id);
+          if (pErr) {
+            showToast(`포인트 차감 실패: ${pErr.message}`, 'danger');
+            return;
           }
 
+          // 2) 재판 포인트 풀 업데이트 (DB에 없는 샘플 재판이면 먼저 생성)
+          await sb.from('trials').upsert({
+            id: trial.id,
+            case_number: trial.caseNumber,
+            category: trial.category,
+            title: trial.title,
+            description: trial.description,
+            plaintiff_points: newPPoints,
+            defendant_points: newDPoints,
+            plaintiff_voters: newPVoters,
+            defendant_voters: newDVoters,
+          });
+
+          // 3) 변론 댓글 저장
+          const { error: aErr } = await sb.from('arguments').insert({
+            id: newArgId,
+            trial_id: trial.id,
+            user_id: state.user.id,
+            side: state.selectedBetSide,
+            author: state.user.nickname,
+            rank: state.user.rank,
+            bet,
+            likes: 1,
+            reports: 0,
+            text,
+          });
+          if (aErr) {
+            showToast(`변론 저장 실패: ${aErr.message}`, 'danger');
+            return;
+          }
+
+          state.user.points = newPoints;
+          state.user.totalBets = newTotalBets;
+          trial.plaintiffPoints = newPPoints;
+          trial.plaintiffVoters = newPVoters;
+          trial.defendantPoints = newDPoints;
+          trial.defendantVoters = newDVoters;
+
           trial.arguments.unshift({
-            id: `arg-${Date.now()}`,
+            id: newArgId,
             side: state.selectedBetSide,
             author: state.user.nickname,
             rank: state.user.rank,
@@ -2227,7 +2361,7 @@
           renderCourtroom();
           renderHallOfFame();
           showToast(
-            `${state.selectedBetSide === 'plaintiff' ? '원고(찬성)' : '피고(반대)'} 측에 ${formatPoints(bet)} 베팅 및 변론이 등록되었습니다!`,
+            `${isP ? '원고(찬성)' : '피고(반대)'} 측에 ${formatPoints(bet)} 베팅 및 변론이 DB에 저장되었습니다!`,
             'success'
           );
         });
@@ -2317,60 +2451,50 @@
           signupForm.classList.add('hidden');
         });
 
-        signupForm.addEventListener('submit', (e) => {
+        signupForm.addEventListener('submit', async (e) => {
           e.preventDefault();
+          const email = document.getElementById('signup-email').value.trim();
+          const password = document.getElementById('signup-password').value;
           const nick = document.getElementById('signup-nickname').value.trim();
           if (nick.length < 2) {
             showToast('닉네임을 2자 이상 입력해주세요.', 'warning');
             return;
           }
-          state.user = {
-            isLoggedIn: true,
-            nickname: nick,
-            points: 1000,
-            cumulativePoints: 1000,
-            wins: 0,
-            totalBets: 0,
-            rank: '배심원',
-          };
-          e.target.reset();
-          closeModal('auth-modal');
-          renderHeader();
-          renderHallOfFame();
-          showToast(`환영합니다, ${nick}님! 가입 축하 무료 포인트 1,000P가 지급되었습니다.`, 'success');
-        });
 
-        loginForm.addEventListener('submit', (e) => {
-          e.preventDefault();
-          const nick = document.getElementById('login-nickname').value.trim();
-          if (nick.length < 2) {
-            showToast('닉네임을 2자 이상 입력해주세요.', 'warning');
+          const { data, error } = await sb.auth.signUp({
+            email,
+            password,
+            options: { data: { nickname: nick } },
+          });
+          if (error) {
+            showToast(`회원가입 실패: ${error.message}`, 'danger');
             return;
           }
-          const existing = state.leaderboard.find((u) => u.nickname === nick);
-          state.user = existing
-            ? {
-                isLoggedIn: true,
-                nickname: existing.nickname,
-                points: existing.points,
-                cumulativePoints: existing.points,
-                wins: existing.wins,
-                totalBets: existing.total,
-                rank: existing.rank,
-              }
-            : {
-                isLoggedIn: true,
-                nickname: nick,
-                points: 1000,
-                cumulativePoints: 1000,
-                wins: 0,
-                totalBets: 0,
-                rank: '배심원',
-              };
+
+          if (data.session) {
+            await loadUserProfile(data.user.id);
+            showToast(`환영합니다, ${nick}님! 가입 축하 무료 포인트 1,000P가 지급되었습니다.`, 'success');
+          } else {
+            showToast('가입 완료! 이메일 인증 링크를 확인한 뒤 로그인해주세요.', 'info');
+          }
           e.target.reset();
           closeModal('auth-modal');
-          renderHeader();
-          renderHallOfFame();
+        });
+
+        loginForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const email = document.getElementById('login-email').value.trim();
+          const password = document.getElementById('login-password').value;
+
+          const { data, error } = await sb.auth.signInWithPassword({ email, password });
+          if (error) {
+            showToast(`로그인 실패: ${error.message}`, 'danger');
+            return;
+          }
+
+          await loadUserProfile(data.user.id);
+          e.target.reset();
+          closeModal('auth-modal');
           showToast(`${state.user.nickname}님으로 로그인되었습니다.`, 'success');
         });
 
@@ -2411,7 +2535,102 @@
         }, 1000);
       };
 
-      const init = () => {
+      const loadUserProfile = async (userId) => {
+        const { data: profile } = await sb.from('profiles').select('*').eq('id', userId).single();
+        if (profile) {
+          const acc = profile.total_bets > 0 ? (profile.wins / profile.total_bets) * 100 : 0;
+          state.user = {
+            id: profile.id,
+            isLoggedIn: true,
+            nickname: profile.nickname,
+            points: profile.points,
+            cumulativePoints: profile.cumulative_points,
+            wins: profile.wins,
+            totalBets: profile.total_bets,
+            rank: getRankByStats(profile.cumulative_points, acc),
+          };
+          renderHeader();
+          renderHallOfFame();
+        }
+      };
+
+      const loadFromSupabase = async () => {
+        // 1) 로그인 세션 복구
+        const { data: { session } } = await sb.auth.getSession();
+        if (session?.user) {
+          await loadUserProfile(session.user.id);
+        }
+
+        // 2) DB 이슈 목록 불러오기 (기존 샘플 앞에 병합)
+        const { data: dbIssues } = await sb.from('issues').select('*').order('created_at', { ascending: false });
+        if (dbIssues?.length) {
+          const mapped = dbIssues.map((i) => ({
+            id: i.id,
+            category: i.category,
+            title: i.title,
+            summary: i.summary,
+            timeAgo: formatTimeAgo(i.created_at),
+            commentsCount: i.comments_count,
+            reports: i.reports,
+            linkedTrialId: i.linked_trial_id,
+          }));
+          const existingIds = new Set(mapped.map((m) => m.id));
+          state.issues = [...mapped, ...state.issues.filter((s) => !existingIds.has(s.id))];
+        }
+
+        // 3) DB 재판 및 변론 불러오기
+        const { data: dbTrials } = await sb.from('trials').select('*').order('created_at', { ascending: false });
+        const { data: dbArgs } = await sb.from('arguments').select('*').order('created_at', { ascending: false });
+
+        if (dbTrials?.length) {
+          dbTrials.forEach((t) => {
+            const rem = Math.max(0, Math.floor((new Date(t.ends_at).getTime() - Date.now()) / 1000));
+            const existing = state.trials.find((st) => st.id === t.id);
+            if (existing) {
+              existing.plaintiffPoints = t.plaintiff_points;
+              existing.defendantPoints = t.defendant_points;
+              existing.plaintiffVoters = t.plaintiff_voters;
+              existing.defendantVoters = t.defendant_voters;
+            } else {
+              state.trials.unshift({
+                id: t.id,
+                caseNumber: t.case_number,
+                category: t.category,
+                title: t.title,
+                description: t.description,
+                remainingSeconds: rem || 3600,
+                plaintiffPoints: t.plaintiff_points,
+                defendantPoints: t.defendant_points,
+                plaintiffVoters: t.plaintiff_voters,
+                defendantVoters: t.defendant_voters,
+                arguments: [],
+              });
+            }
+          });
+        }
+
+        if (dbArgs?.length) {
+          dbArgs.forEach((a) => {
+            const targetTrial = state.trials.find((t) => t.id === a.trial_id);
+            if (targetTrial && !targetTrial.arguments.some((x) => x.id === a.id)) {
+              targetTrial.arguments.unshift({
+                id: a.id,
+                side: a.side,
+                author: a.author,
+                rank: a.rank,
+                bet: a.bet,
+                likes: a.likes,
+                reports: a.reports,
+                timeAgo: formatTimeAgo(a.created_at),
+                text: a.text,
+              });
+            }
+          });
+        }
+      };
+
+      const init = async () => {
+        await loadFromSupabase();
         renderHeader();
         renderIssues();
         renderCourtroom();
